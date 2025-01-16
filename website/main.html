@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aquarium Auto Top-Off</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/script.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>Aquarium Auto Top-Off</h1>
+    </header>
+    <main>
+      <section>
+        <table>
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Water Level</td>
+              <td id="water-level">-</td>
+            </tr>
+            <tr>
+              <td>Pump State</td>
+              <td id="pump-state">-</td>
+            </tr>
+            <tr>
+              <td>Current system time</td>
+              <td id="current-system-time">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="controls">
+        <section class="toggle-buttons">
+          <button onclick="togglePump(true)">Turn Pump ON</button>
+          <button onclick="togglePump(false)">Turn Pump OFF</button>
+          <button onclick="topUp()">Top-Off Now</button>
+        </section>
+
+        <section class="trigger-controls">
+          <label for="trigger-input">Set Trigger Level (cm):</label>
+          <input type="number" id="trigger-input" step="0.01" min="0" />
+          <button onclick="setTriggerLevel()">Set</button>
+        </section>
+
+        <section class="schedule-controls">
+          <label for="time-input">Set Trigger Time:</label>
+          <input type="time" id="time-input" />
+
+          <section class="days-toggle">
+            <button type="button" class="day-button" data-day="1">Mon</button>
+            <button type="button" class="day-button" data-day="2">Tue</button>
+            <button type="button" class="day-button" data-day="3">Wed</button>
+            <button type="button" class="day-button" data-day="4">Thu</button>
+            <button type="button" class="day-button" data-day="5">Fri</button>
+            <button type="button" class="day-button" data-day="6">Sat</button>
+            <button type="button" class="day-button" data-day="7">Sun</button>
+          </section>
+
+          <button onclick="setSchedule()">Set Schedule</button>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

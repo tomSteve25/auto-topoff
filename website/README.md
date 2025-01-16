@@ -1,0 +1,1 @@
+These files directly loaded onto the ESP32 in any automatic way. They are copied and pasted into the source code, with escape characters added where necessary. They are only here to make the front-end design not rely on flashing the ESP32 each time.
