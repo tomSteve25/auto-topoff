@@ -19,11 +19,17 @@
 #define ECHO_GPIO GPIO_NUM_1
 #define PUMP_PIN GPIO_NUM_4
 #define NUM_BELOW_TRIGGER 3     // the number of sensor readings that must be below the trigger value for it to count
-#define MAX_TOPUP_TIME 15000000 // the maximum topup time is 15s. This is to prevent a case where a sensor issue may cause the topup to never end.
+#define MAX_TOPUP_TIME 15000000 // the maximum topup time is 15s. This is to prevent a case where a sensor issue may cause the topup to never end. TODO: configurable?
 #define TRIGGER_REACHED "Trigger level reached"
 #define PUMP_TIMEOUT "The pump on time limit was reached"
 #define SENSOR_ERROR "Sensor error"
 #define TOPUP_NOT_NEEDED "Topup not needed"
+#define NVS_KEY_TRIGGER_LEVEL "trigger_level"
+#define NVS_KEY_TRIGGER_HOUR "trigger_hour"
+#define NVS_KEY_TRIGGER_MINUTE "trigger_minute"
+#define NVS_KEY_TRIGGER_DAYS "trigger_days"
+#define NVS_KEY_TRIGGER_LAST "last_trigger"
+#define NVS_KEY_TRIGGER_REASON "trigger_reason"
 
 static distance_sensor_t sensor = {
     .trigger_pin = TRIGGER_GPIO,
@@ -72,7 +78,7 @@ static float get_trigger_level() {
         return trigger_level;
     } else {
         int32_t trigger_level_mm;
-        esp_err_t err = nvs_get_i32(my_handle, "trigger_level", &trigger_level_mm);
+        esp_err_t err = nvs_get_i32(my_handle, NVS_KEY_TRIGGER_LEVEL, &trigger_level_mm);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             ESP_LOGE(TAG_STORAGE, "No saved trigger level found, using safe value of %.2fcm.", trigger_level);
         } else if (err == ESP_OK) { // stored value found, using it
@@ -88,14 +94,14 @@ static float get_trigger_level() {
 
 static void set_trigger_level(float i) {
     int32_t trigger_level_mm = i * 1000;
-    ESP_ERROR_CHECK(nvs_set_i32(my_handle, "trigger_level", trigger_level_mm));
+    ESP_ERROR_CHECK(nvs_set_i32(my_handle, NVS_KEY_TRIGGER_LEVEL, trigger_level_mm));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     ESP_LOGI(TAG_STORAGE, "Trigger level saved.");
     trigger_level = i;
 }
 
 static void set_trigger_hour(uint8_t value) {
-    ESP_ERROR_CHECK(nvs_set_u8(my_handle, "trigger_hour", value));
+    ESP_ERROR_CHECK(nvs_set_u8(my_handle, NVS_KEY_TRIGGER_HOUR, value));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     triggerHour = value;
 }
@@ -107,21 +113,21 @@ static uint8_t get_trigger_hour() {
     if (executed) {
         return triggerHour;
     } else {
-        esp_err_t err = nvs_get_u8(my_handle, "trigger_hour", &triggerHour);
+        esp_err_t err = nvs_get_u8(my_handle, NVS_KEY_TRIGGER_HOUR, &triggerHour);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             ESP_LOGW(TAG_STORAGE, "No saved trigger hour found, using default value of: %i.", triggerHour);
         } else if (err == ESP_OK) {
             ESP_LOGI(TAG_STORAGE, "Found saved trigger hour: %i", triggerHour);
             executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
         } else {
-            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s)for trigger_hour.\n Using default value of: %i.", esp_err_to_name(err), triggerHour);
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s)for %s.\n Using default value of: %i.", esp_err_to_name(err), NVS_KEY_TRIGGER_HOUR, triggerHour);
         }
     }
     return triggerHour;
 }
 
 static void set_trigger_minute(uint8_t value) {
-    ESP_ERROR_CHECK(nvs_set_u8(my_handle, "trigger_minute", value));
+    ESP_ERROR_CHECK(nvs_set_u8(my_handle, NVS_KEY_TRIGGER_MINUTE, value));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     triggerMinute = value;
 }
@@ -133,21 +139,21 @@ static uint8_t get_trigger_minute() {
     if (executed) {
         return triggerMinute;
     } else {
-        esp_err_t err = nvs_get_u8(my_handle, "trigger_minute", &triggerMinute);
+        esp_err_t err = nvs_get_u8(my_handle, NVS_KEY_TRIGGER_MINUTE, &triggerMinute);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             ESP_LOGW(TAG_STORAGE, "No saved trigger minute found, using default value of: %i.", triggerMinute);
         } else if (err == ESP_OK) {
             ESP_LOGI(TAG_STORAGE, "Found saved trigger minute: %i", triggerMinute);
             executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
         } else {
-            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for trigger_minute.\n Using default value of: %i.", esp_err_to_name(err), triggerMinute);
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for %s.\n Using default value of: %i.", esp_err_to_name(err), NVS_KEY_TRIGGER_MINUTE, triggerMinute);
         }
     }
     return triggerMinute;
 }
 
 static void set_trigger_days(uint8_t value) {
-    ESP_ERROR_CHECK(nvs_set_u8(my_handle, "trigger_days", value));
+    ESP_ERROR_CHECK(nvs_set_u8(my_handle, NVS_KEY_TRIGGER_DAYS, value));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     daysOfTheWeek = value;
 }
@@ -159,21 +165,21 @@ static uint8_t get_trigger_days() {
     if (executed) {
         return daysOfTheWeek;
     } else {
-        esp_err_t err = nvs_get_u8(my_handle, "trigger_days", &daysOfTheWeek);
+        esp_err_t err = nvs_get_u8(my_handle, NVS_KEY_TRIGGER_DAYS, &daysOfTheWeek);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             ESP_LOGW(TAG_STORAGE, "No saved trigger days found, using default value of: %i (Mon, Thurs).", daysOfTheWeek);
         } else if (err == ESP_OK) {
             ESP_LOGI(TAG_STORAGE, "Found saved trigger days: %i", daysOfTheWeek);
             executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
         } else {
-            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for trigger_days.\n Using default value of: %i (Mon, Thurs).", esp_err_to_name(err), daysOfTheWeek);
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for %s.\n Using default value of: %i (Mon, Thurs).", esp_err_to_name(err), NVS_KEY_TRIGGER_DAYS, daysOfTheWeek);
         }
     }
     return daysOfTheWeek;
 }
 
 static void set_last_trigger(const char *time_str) {
-    ESP_ERROR_CHECK(nvs_set_str(my_handle, "last_trigger", time_str));
+    ESP_ERROR_CHECK(nvs_set_str(my_handle, NVS_KEY_TRIGGER_LAST, time_str));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     strncpy(last_trigger, time_str, sizeof(last_trigger));
 }
@@ -186,21 +192,21 @@ static void get_last_trigger() {
         return;
     } else {
         size_t length = sizeof(last_trigger);
-        esp_err_t err = nvs_get_str(my_handle, "last_trigger", last_trigger, &length);
+        esp_err_t err = nvs_get_str(my_handle, NVS_KEY_TRIGGER_LAST, last_trigger, &length);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
-            ESP_LOGW(TAG_STORAGE, "No saved last trigger time found, using default value of: No data");
+            ESP_LOGW(TAG_STORAGE, "No saved last trigger time found");
         } else if (err == ESP_OK) {
             ESP_LOGI(TAG_STORAGE, "Found saved last trigger time: %s", last_trigger);
             executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
         } else {
-            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for last_trigger.\n Using default value of: No data.", esp_err_to_name(err));
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for %s.\n", esp_err_to_name(err), NVS_KEY_TRIGGER_LAST);
         }
     }
     return;
 }
 
 static void set_trigger_reason(const char *reason) {
-    ESP_ERROR_CHECK(nvs_set_str(my_handle, "trigger_reason", last_trigger_reason));
+    ESP_ERROR_CHECK(nvs_set_str(my_handle, NVS_KEY_TRIGGER_REASON, last_trigger_reason));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     strncpy(last_trigger_reason, reason, sizeof(last_trigger_reason));
 }
@@ -213,14 +219,14 @@ static void get_trigger_reason() {
         return;
     } else {
         size_t length = sizeof(last_trigger_reason);
-        esp_err_t err = nvs_get_str(my_handle, "trigger_reason", last_trigger_reason, &length);
+        esp_err_t err = nvs_get_str(my_handle, NVS_KEY_TRIGGER_REASON, last_trigger_reason, &length);
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             ESP_LOGW(TAG_STORAGE, "No saved last trigger reason found, using default value of: %s", TRIGGER_REACHED);
         } else if (err == ESP_OK) {
             ESP_LOGI(TAG_STORAGE, "Found saved trigger_reason: %s", last_trigger_reason);
             executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
         } else {
-            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for trigger_reason.\n Using default value of: %s", esp_err_to_name(err), TRIGGER_REACHED);
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for %s.\n Using default value of: %s", esp_err_to_name(err), NVS_KEY_TRIGGER_REASON, TRIGGER_REACHED);
         }
     }
     return;
