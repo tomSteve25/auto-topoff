@@ -206,7 +206,7 @@ static void get_last_trigger() {
 }
 
 static void set_trigger_reason(const char *reason) {
-    ESP_ERROR_CHECK(nvs_set_str(my_handle, NVS_KEY_TRIGGER_REASON, last_trigger_reason));
+    ESP_ERROR_CHECK(nvs_set_str(my_handle, NVS_KEY_TRIGGER_REASON, reason));
     ESP_ERROR_CHECK(nvs_commit(my_handle));
     strncpy(last_trigger_reason, reason, sizeof(last_trigger_reason));
 }
@@ -935,6 +935,13 @@ static void obtain_time(void) {
 }
 
 void topup_task() {
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    char strftime_buf[64];
+    localtime_r(&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    set_last_trigger(strftime_buf);
     doTopup = false;
     ESP_LOGI(TAG, "Performing topup");
     float water_level;
@@ -946,14 +953,6 @@ void topup_task() {
     }
     float trigger_level = get_trigger_level();
     if (water_level >= trigger_level) {
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        char strftime_buf[64];
-        localtime_r(&now, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-        set_last_trigger(strftime_buf);
-
         bool earlyBreak = false;
         pump_on();
         volatile int64_t start_time = esp_timer_get_time();
