@@ -57,6 +57,7 @@ async function updateStats() {
       document.getElementById("pump-state").innerText =
         data.pump_state.toUpperCase() == "TRUE" ? "ON" : "OFF";
       document.getElementById("current-system-time").innerText = data.current_system_time;
+      document.getElementById("last-trigger-time").innerText = data.last_trigger + ` (${data.last_reason})`;
       globalTriggerLevel = data.trigger_level;
       globalDays = data.topup_dates;
       globalHours = data.topup_hour;

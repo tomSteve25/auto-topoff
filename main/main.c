@@ -20,6 +20,10 @@
 #define PUMP_PIN GPIO_NUM_4
 #define NUM_BELOW_TRIGGER 3     // the number of sensor readings that must be below the trigger value for it to count
 #define MAX_TOPUP_TIME 15000000 // the maximum topup time is 15s. This is to prevent a case where a sensor issue may cause the topup to never end.
+#define TRIGGER_REACHED "Trigger level reached"
+#define PUMP_TIMEOUT "The pump on time limit was reached"
+#define SENSOR_ERROR "Sensor error"
+#define TOPUP_NOT_NEEDED "Topup not needed"
 
 static distance_sensor_t sensor = {
     .trigger_pin = TRIGGER_GPIO,
@@ -37,6 +41,8 @@ static uint8_t daysOfTheWeek = 9; // stores which days of the week the system mu
 static uint8_t triggerHour = 14;
 static uint8_t triggerMinute = 30;
 static float trigger_level = 3.0f;
+static char last_trigger[30] = {0};
+static char last_trigger_reason[40] = {0};
 RTC_DATA_ATTR static int boot_count = 0;
 
 static void obtain_time(void);
@@ -164,6 +170,60 @@ static uint8_t get_trigger_days() {
         }
     }
     return daysOfTheWeek;
+}
+
+static void set_last_trigger(const char *time_str) {
+    ESP_ERROR_CHECK(nvs_set_str(my_handle, "last_trigger", time_str));
+    ESP_ERROR_CHECK(nvs_commit(my_handle));
+    strncpy(last_trigger, time_str, sizeof(last_trigger));
+}
+
+static void get_last_trigger() {
+    static bool executed = false;
+
+    // Value is already in memory
+    if (executed) {
+        return;
+    } else {
+        size_t length = sizeof(last_trigger);
+        esp_err_t err = nvs_get_str(my_handle, "last_trigger", last_trigger, &length);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG_STORAGE, "No saved last trigger time found, using default value of: No data");
+        } else if (err == ESP_OK) {
+            ESP_LOGI(TAG_STORAGE, "Found saved last trigger time: %s", last_trigger);
+            executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
+        } else {
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for last_trigger.\n Using default value of: No data.", esp_err_to_name(err));
+        }
+    }
+    return;
+}
+
+static void set_trigger_reason(const char *reason) {
+    ESP_ERROR_CHECK(nvs_set_str(my_handle, "trigger_reason", last_trigger_reason));
+    ESP_ERROR_CHECK(nvs_commit(my_handle));
+    strncpy(last_trigger_reason, reason, sizeof(last_trigger_reason));
+}
+
+static void get_trigger_reason() {
+    static bool executed = false;
+
+    // Value is already in memory
+    if (executed) {
+        return;
+    } else {
+        size_t length = sizeof(last_trigger_reason);
+        esp_err_t err = nvs_get_str(my_handle, "trigger_reason", last_trigger_reason, &length);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG_STORAGE, "No saved last trigger reason found, using default value of: %s", TRIGGER_REACHED);
+        } else if (err == ESP_OK) {
+            ESP_LOGI(TAG_STORAGE, "Found saved trigger_reason: %s", last_trigger_reason);
+            executed = true; // Only set true on a successfull NVS read - will want to retry in other circumstances.
+        } else {
+            ESP_LOGE(TAG_STORAGE, "Error reading NVS (%s) for trigger_reason.\n Using default value of: %s", esp_err_to_name(err), TRIGGER_REACHED);
+        }
+    }
+    return;
 }
 
 static bool get_pump_state() {
@@ -294,6 +354,10 @@ static const httpd_uri_t root = {
                 "                    <tr>"
                 "                      <td>Current system time</td>"
                 "                      <td id=\"current-system-time\">-</td>"
+                "                    </tr>"
+                "                    <tr>"
+                "                      <td>Last trigger time</td>"
+                "                      <td id=\"last-trigger-time\">-</td>"
                 "                    </tr>"
                 "                </tbody>"
                 "            </table>"
@@ -539,6 +603,7 @@ esp_err_t js_get_handler(httpd_req_t *req) {
         "        ? \"ON\"\n"
         "        : \"OFF\";\n"
         "      document.getElementById(\"current-system-time\").innerText = data.current_system_time;\n"
+        "      document.getElementById(\"last-trigger-time\").innerText = data.last_trigger + ` (${data.last_reason})`;\n"
         "      globalTriggerLevel = data.trigger_level; \n"
         "      globalDays = data.topup_dates; \n"
         "      globalHours = data.topup_hour; \n"
@@ -621,7 +686,7 @@ httpd_uri_t js_uri = {
 
 esp_err_t stats_get_handler(httpd_req_t *req) {
     ESP_LOGI(TAG_SERVER, "Handling get statistics request");
-    char response[250];
+    char response[350];
     float water_level;
     esp_err_t res = get_current_water_level(&water_level);
     if (res != ESP_OK) {
@@ -630,6 +695,8 @@ esp_err_t stats_get_handler(httpd_req_t *req) {
     }
     float trigger_level = get_trigger_level();
     bool pump_state = get_pump_state();
+    get_last_trigger();
+    get_trigger_reason();
 
     time_t now;
     struct tm timeinfo;
@@ -640,8 +707,8 @@ esp_err_t stats_get_handler(httpd_req_t *req) {
     localtime_r(&now, &timeinfo);
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
 
-    snprintf(response, sizeof(response), "{\"level\":%.2f,\"trigger_level\":%.2f,\"pump_state\":%s,\"current_system_time\":\"%s\", \"topup_dates\": %i, \"topup_hour\": %i, \"topup_minute\": %i}",
-             water_level, trigger_level, pump_state ? "\"true\"" : "\"false\"", strftime_buf, get_trigger_days(), get_trigger_hour(), get_trigger_minute());
+    snprintf(response, sizeof(response), "{\"level\":%.2f,\"trigger_level\":%.2f,\"pump_state\":%s,\"current_system_time\":\"%s\", \"topup_dates\": %i, \"topup_hour\": %i, \"topup_minute\": %i, \"last_trigger\": \"%s\", \"last_reason\": \"%s\"}",
+             water_level, trigger_level, pump_state ? "\"true\"" : "\"false\"", strftime_buf, get_trigger_days(), get_trigger_hour(), get_trigger_minute(), last_trigger, last_trigger_reason);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, strlen(response));
     return ESP_OK;
@@ -873,6 +940,15 @@ void topup_task() {
     }
     float trigger_level = get_trigger_level();
     if (water_level >= trigger_level) {
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        char strftime_buf[64];
+        localtime_r(&now, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+        set_last_trigger(strftime_buf);
+
+        bool earlyBreak = false;
         pump_on();
         volatile int64_t start_time = esp_timer_get_time();
         // Update water level BEFORE entering the loop
@@ -880,6 +956,8 @@ void topup_task() {
             err = get_current_water_level(&water_level);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "Sensor not ok, abandoning topup");
+                set_trigger_reason(SENSOR_ERROR);
+                earlyBreak = true;
                 break;
             }
 
@@ -889,11 +967,18 @@ void topup_task() {
                 num_below = 0;
             }
             if (timeout_expired(start_time, MAX_TOPUP_TIME)) {
+                set_trigger_reason(PUMP_TIMEOUT);
                 ESP_LOGW(TAG_TIME, "10s timer topup reached... stopping pump");
+                earlyBreak = true;
                 break;
             }
         }
         pump_off();
+        if (!earlyBreak) {
+            set_trigger_reason(TRIGGER_REACHED);
+        }
+    } else {
+        set_trigger_reason(TOPUP_NOT_NEEDED);
     }
     ESP_LOGI(TAG, "Topup done");
 }
@@ -903,7 +988,6 @@ void timer_callback(void *arg) {
     time_t now;
     struct tm timeinfo;
     time(&now);
-    localtime_r(&now, &timeinfo);
 
     char strftime_buf[64];
     localtime_r(&now, &timeinfo);
